@@ -2,31 +2,30 @@
   "schemaVersion": 1,
   "id": "smart_gap",
   "version": "${version}",
+
   "name": "Smart_Gap",
   "description": "",
   "authors": [],
   "contact": {},
+
   "license": "All-Rights-Reserved",
   "icon": "assets/smart_gap/icon.png",
+
   "environment": "client",
   "entrypoints": {
-    "fabric-datagen": [
-      "me.smart_pearl.smart_gap.client.Smart_gapDataGenerator"
-    ],
-    "client": [
-      "me.smart_pearl.smart_gap.client.Smart_gapClient"
-    ],
-    "main": [
-      "me.smart_pearl.smart_gap.Smart_gap"
-    ]
+    "fabric-datagen": ["me.smart_gap.smart_gap.client.Smart_gapDataGenerator"],
+    "client": ["me.smart_gap.smart_gap.client.Smart_gapClient"],
+    "main": ["me.smart_gap.smart_gap.Smart_gap"]
   },
+
   "mixins": [
-    "smart_gap.mixins.json",
-    {
+    "smart_gap.mixins.json"
+    ,{
       "config": "smart_gap.client.mixins.json",
       "environment": "client"
     }
   ],
+
   "depends": {
     "fabricloader": ">=${loader_version}",
     "fabric-api": "*",

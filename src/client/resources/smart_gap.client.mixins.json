@@ -1,7 +1,7 @@
 {
   "required": true,
   "minVersion": "0.8",
-  "package": "me.smart_pearl.smart_gap.mixin.client",
+  "package": "me.smart_gap.smart_gap.mixin.client",
   "compatibilityLevel": "JAVA_21",
   "client": [
   ],
