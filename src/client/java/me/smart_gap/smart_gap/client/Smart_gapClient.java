@@ -19,7 +19,7 @@ public class Smart_gapClient implements ClientModInitializer {
     public void onInitializeClient() {
 
         gapKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-                "key.smart_gap.eat",
+                "Use Smart Gap",
                 InputUtil.Type.KEYSYM,
                 GLFW.GLFW_KEY_X,
                 KeyBinding.Category.MISC
