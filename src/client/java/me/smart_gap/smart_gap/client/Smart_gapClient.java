@@ -1,10 +1,13 @@
 package me.smart_gap.smart_gap.client;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -16,6 +19,10 @@ import net.minecraft.item.Items;
 import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
@@ -27,18 +34,28 @@ public class Smart_gapClient implements ClientModInitializer {
     private int lastStackCount = -1;
     private int delayTimer = -1;
 
-    public static boolean switchBackEnabled = true;
-    public static int switchDelay = 0;
+    // --- CONFIG WERTE ---
+    public static ConfigData config = new ConfigData();
+    private static final File CONFIG_FILE = FabricLoader.getInstance().getConfigDir().resolve("smart_gap.json").toFile();
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     public static final List<String> OPTIONS = Arrays.asList(
             "Sword", "Axe", "Spear", "Trident", "Mace",
             "Slot 1", "Slot 2", "Slot 3", "Slot 4", "Slot 5", "Slot 6", "Slot 7", "Slot 8", "Slot 9"
     );
-    public static int primaryIndex = 0;
-    public static int backupIndex = 1;
+
+    // Datenklasse für JSON
+    public static class ConfigData {
+        public boolean switchBackEnabled = true;
+        public int switchDelay = 0;
+        public int primaryIndex = 0;
+        public int backupIndex = 1;
+    }
 
     @Override
     public void onInitializeClient() {
+        loadConfig(); // Beim Start laden
+
         gapKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("Use Smart Gap", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_X, KeyBinding.Category.MISC));
 
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
@@ -56,6 +73,26 @@ public class Smart_gapClient implements ClientModInitializer {
         });
     }
 
+    // --- SPEICHER LOGIK ---
+    public static void saveConfig() {
+        try (FileWriter writer = new FileWriter(CONFIG_FILE)) {
+            GSON.toJson(config, writer);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void loadConfig() {
+        if (CONFIG_FILE.exists()) {
+            try (FileReader reader = new FileReader(CONFIG_FILE)) {
+                config = GSON.fromJson(reader, ConfigData.class);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    // --- LOGIK ---
     private void selectBestGap(MinecraftClient client) {
         int bestSlot = -1;
         for (int i = 0; i < 9; i++) {
@@ -67,7 +104,7 @@ public class Smart_gapClient implements ClientModInitializer {
     }
 
     private void handleAutoWeaponSwitch(MinecraftClient client) {
-        if (!switchBackEnabled || client.player == null) return;
+        if (!config.switchBackEnabled || client.player == null) return;
 
         ItemStack activeItem = client.player.getActiveItem();
         boolean isCurrentlyEating = client.player.isUsingItem() &&
@@ -75,33 +112,25 @@ public class Smart_gapClient implements ClientModInitializer {
 
         int currentStackCount = activeItem.getCount();
 
-        // 1. Check ob ein Item verbraucht wurde (für Dauerdrücker/Auto-Eat)
         if (isCurrentlyEating && lastStackCount != -1 && currentStackCount < lastStackCount) {
-            delayTimer = switchDelay;
+            delayTimer = config.switchDelay;
         }
 
-        // 2. Check ob das Essen beendet wurde (Taste losgelassen)
         if (!isCurrentlyEating && wasEating) {
-            if (lastUseTime >= 31) {
-                delayTimer = switchDelay;
-            }
+            if (lastUseTime >= 31) delayTimer = config.switchDelay;
         }
 
         wasEating = isCurrentlyEating;
         lastUseTime = client.player.getItemUseTime();
         lastStackCount = isCurrentlyEating ? currentStackCount : -1;
 
-        if (delayTimer == 0) {
-            findAndPerformSwitch(client);
-            delayTimer = -1;
-        } else if (delayTimer > 0) {
-            delayTimer--;
-        }
+        if (delayTimer == 0) { findAndPerformSwitch(client); delayTimer = -1; }
+        else if (delayTimer > 0) delayTimer--;
     }
 
     private void findAndPerformSwitch(MinecraftClient client) {
-        int slot = findSlotByMode(client, OPTIONS.get(primaryIndex));
-        if (slot == -1) slot = findSlotByMode(client, OPTIONS.get(backupIndex));
+        int slot = findSlotByMode(client, OPTIONS.get(config.primaryIndex));
+        if (slot == -1) slot = findSlotByMode(client, OPTIONS.get(config.backupIndex));
         if (slot != -1) client.player.getInventory().setSelectedSlot(slot);
     }
 
@@ -120,19 +149,27 @@ public class Smart_gapClient implements ClientModInitializer {
         return -1;
     }
 
-    // --- GUI Klassen ---
+    // --- GUI ---
     public static class ConfigScreen extends Screen {
         public ConfigScreen() { super(Text.literal("Smart Gap Settings")); }
         @Override
         protected void init() {
             int x = this.width / 2 - 100;
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Auto-Switch: " + (switchBackEnabled ? "§aON" : "§cOFF")), b -> {
-                switchBackEnabled = !switchBackEnabled;
-                b.setMessage(Text.literal("Auto-Switch: " + (switchBackEnabled ? "§aON" : "§cOFF")));
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Auto-Switch: " + (config.switchBackEnabled ? "§aON" : "§cOFF")), b -> {
+                config.switchBackEnabled = !config.switchBackEnabled;
+                b.setMessage(Text.literal("Auto-Switch: " + (config.switchBackEnabled ? "§aON" : "§cOFF")));
+                saveConfig();
             }).dimensions(x, 40, 200, 20).build());
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Primary: §b" + OPTIONS.get(primaryIndex)), b -> client.setScreen(new SelectionScreen(this, true))).dimensions(x, 70, 200, 20).build());
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Backup: §b" + OPTIONS.get(backupIndex)), b -> client.setScreen(new SelectionScreen(this, false))).dimensions(x, 100, 200, 20).build());
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Delay: " + switchDelay + " Ticks"), b -> { switchDelay = (switchDelay + 1) % 11; b.setMessage(Text.literal("Delay: " + switchDelay + " Ticks")); }).dimensions(x, 130, 200, 20).build());
+
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Primary: §b" + OPTIONS.get(config.primaryIndex)), b -> client.setScreen(new SelectionScreen(this, true))).dimensions(x, 70, 200, 20).build());
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Backup: §b" + OPTIONS.get(config.backupIndex)), b -> client.setScreen(new SelectionScreen(this, false))).dimensions(x, 100, 200, 20).build());
+
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Delay: " + config.switchDelay + " Ticks"), b -> {
+                config.switchDelay = (config.switchDelay + 1) % 11;
+                b.setMessage(Text.literal("Delay: " + config.switchDelay + " Ticks"));
+                saveConfig();
+            }).dimensions(x, 130, 200, 20).build());
+
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> this.client.setScreen(null)).dimensions(x, 170, 200, 20).build());
         }
         @Override
@@ -152,7 +189,11 @@ public class Smart_gapClient implements ClientModInitializer {
             for (int i = 0; i < OPTIONS.size(); i++) {
                 int index = i;
                 int r = i / cols, c = i % cols;
-                this.addDrawableChild(ButtonWidget.builder(Text.literal(OPTIONS.get(i)), b -> { if (isPrimary) primaryIndex = index; else backupIndex = index; client.setScreen(parent); }).dimensions(sx + c * (bw + sp), sy + r * (bh + sp), bw, bh).build());
+                this.addDrawableChild(ButtonWidget.builder(Text.literal(OPTIONS.get(i)), b -> {
+                    if (isPrimary) config.primaryIndex = index; else config.backupIndex = index;
+                    saveConfig(); // Speichern bei Auswahl
+                    client.setScreen(parent);
+                }).dimensions(sx + c * (bw + sp), sy + r * (bh + sp), bw, bh).build());
             }
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Cancel"), b -> client.setScreen(parent)).dimensions(this.width / 2 - 50, this.height - 30, 100, 20).build());
         }
