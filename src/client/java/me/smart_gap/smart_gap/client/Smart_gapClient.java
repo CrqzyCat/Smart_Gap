@@ -23,13 +23,13 @@ public class Smart_gapClient implements ClientModInitializer {
 
     private static KeyBinding gapKey;
     private boolean wasEating = false;
+    private int lastUseTime = 0;
+    private int lastStackCount = -1;
     private int delayTimer = -1;
 
-    // --- CONFIG ---
     public static boolean switchBackEnabled = true;
     public static int switchDelay = 0;
 
-    // Die Liste aller verfügbaren Optionen
     public static final List<String> OPTIONS = Arrays.asList(
             "Sword", "Axe", "Spear", "Trident", "Mace",
             "Slot 1", "Slot 2", "Slot 3", "Slot 4", "Slot 5", "Slot 6", "Slot 7", "Slot 8", "Slot 9"
@@ -67,15 +67,36 @@ public class Smart_gapClient implements ClientModInitializer {
     }
 
     private void handleAutoWeaponSwitch(MinecraftClient client) {
-        if (!switchBackEnabled) return;
-        ItemStack activeItem = client.player.getActiveItem();
-        boolean isCurrentlyEating = client.player.isUsingItem() && (activeItem.isOf(Items.GOLDEN_APPLE) || activeItem.isOf(Items.ENCHANTED_GOLDEN_APPLE));
+        if (!switchBackEnabled || client.player == null) return;
 
-        if (!isCurrentlyEating && wasEating) delayTimer = switchDelay;
-        if (delayTimer == 0) { findAndPerformSwitch(client); delayTimer = -1; }
-        else if (delayTimer > 0) delayTimer--;
+        ItemStack activeItem = client.player.getActiveItem();
+        boolean isCurrentlyEating = client.player.isUsingItem() &&
+                (activeItem.isOf(Items.GOLDEN_APPLE) || activeItem.isOf(Items.ENCHANTED_GOLDEN_APPLE));
+
+        int currentStackCount = activeItem.getCount();
+
+        // 1. Check ob ein Item verbraucht wurde (für Dauerdrücker/Auto-Eat)
+        if (isCurrentlyEating && lastStackCount != -1 && currentStackCount < lastStackCount) {
+            delayTimer = switchDelay;
+        }
+
+        // 2. Check ob das Essen beendet wurde (Taste losgelassen)
+        if (!isCurrentlyEating && wasEating) {
+            if (lastUseTime >= 31) {
+                delayTimer = switchDelay;
+            }
+        }
 
         wasEating = isCurrentlyEating;
+        lastUseTime = client.player.getItemUseTime();
+        lastStackCount = isCurrentlyEating ? currentStackCount : -1;
+
+        if (delayTimer == 0) {
+            findAndPerformSwitch(client);
+            delayTimer = -1;
+        } else if (delayTimer > 0) {
+            delayTimer--;
+        }
     }
 
     private void findAndPerformSwitch(MinecraftClient client) {
@@ -90,101 +111,53 @@ public class Smart_gapClient implements ClientModInitializer {
             ItemStack s = client.player.getInventory().getStack(i);
             if (s.isEmpty()) continue;
             String itemName = s.getItem().toString().toLowerCase();
-
             if (mode.equals("Sword") && itemName.contains("sword")) return i;
             if (mode.equals("Axe") && itemName.contains("_axe")) return i;
-            // Spear Erkennung (Items.SPEAR falls vorhanden, sonst Namenscheck)
-            if (mode.equals("Spear") && (itemName.contains("spear"))) return i;
+            if (mode.equals("Spear") && itemName.contains("spear")) return i;
             if (mode.equals("Trident") && s.isOf(Items.TRIDENT)) return i;
             if (mode.equals("Mace") && itemName.contains("mace")) return i;
         }
         return -1;
     }
 
-    // --- HAUPT SETTINGS GUI ---
+    // --- GUI Klassen ---
     public static class ConfigScreen extends Screen {
         public ConfigScreen() { super(Text.literal("Smart Gap Settings")); }
-
         @Override
         protected void init() {
             int x = this.width / 2 - 100;
-
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Auto-Switch: " + (switchBackEnabled ? "§aON" : "§cOFF")), b -> {
                 switchBackEnabled = !switchBackEnabled;
                 b.setMessage(Text.literal("Auto-Switch: " + (switchBackEnabled ? "§aON" : "§cOFF")));
             }).dimensions(x, 40, 200, 20).build());
-
-            // Öffnet den SelectionScreen für Primary
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Primary: §b" + OPTIONS.get(primaryIndex)), b -> {
-                this.client.setScreen(new SelectionScreen(this, true));
-            }).dimensions(x, 70, 200, 20).build());
-
-            // Öffnet den SelectionScreen für Backup
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Backup: §b" + OPTIONS.get(backupIndex)), b -> {
-                this.client.setScreen(new SelectionScreen(this, false));
-            }).dimensions(x, 100, 200, 20).build());
-
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Delay: " + switchDelay + " Ticks"), b -> {
-                switchDelay = (switchDelay + 1) % 11;
-                b.setMessage(Text.literal("Delay: " + switchDelay + " Ticks"));
-            }).dimensions(x, 130, 200, 20).build());
-
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Primary: §b" + OPTIONS.get(primaryIndex)), b -> client.setScreen(new SelectionScreen(this, true))).dimensions(x, 70, 200, 20).build());
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Backup: §b" + OPTIONS.get(backupIndex)), b -> client.setScreen(new SelectionScreen(this, false))).dimensions(x, 100, 200, 20).build());
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Delay: " + switchDelay + " Ticks"), b -> { switchDelay = (switchDelay + 1) % 11; b.setMessage(Text.literal("Delay: " + switchDelay + " Ticks")); }).dimensions(x, 130, 200, 20).build());
             this.addDrawableChild(ButtonWidget.builder(Text.literal("Done"), b -> this.client.setScreen(null)).dimensions(x, 170, 200, 20).build());
         }
-
         @Override
-        public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-            this.renderInGameBackground(context);
-            context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 15, 0xFFFFFF);
-            super.render(context, mouseX, mouseY, delta);
-        }
+        public void render(DrawContext context, int mouseX, int mouseY, float delta) { this.renderInGameBackground(context); context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 15, 0xFFFFFF); super.render(context, mouseX, mouseY, delta); }
         @Override public boolean shouldPause() { return false; }
     }
 
-    // --- AUSWAHL LISTE GUI ---
     public static class SelectionScreen extends Screen {
         private final Screen parent;
         private final boolean isPrimary;
-
-        public SelectionScreen(Screen parent, boolean isPrimary) {
-            super(Text.literal(isPrimary ? "Select Primary Weapon" : "Select Backup Weapon"));
-            this.parent = parent;
-            this.isPrimary = isPrimary;
-        }
-
+        public SelectionScreen(Screen parent, boolean isPrimary) { super(Text.literal(isPrimary ? "Select Primary" : "Select Backup")); this.parent = parent; this.isPrimary = isPrimary; }
         @Override
         protected void init() {
-            int buttonWidth = 100;
-            int buttonHeight = 20;
-            int spacing = 4;
-            int cols = 3; // 3 Spalten für die Liste
-
-            int totalWidth = (cols * buttonWidth) + ((cols - 1) * spacing);
-            int startX = (this.width - totalWidth) / 2;
-            int startY = 40;
-
+            int bw = 100, bh = 20, sp = 4, cols = 3;
+            int tw = (cols * bw) + ((cols - 1) * sp);
+            int sx = (this.width - tw) / 2, sy = 40;
             for (int i = 0; i < OPTIONS.size(); i++) {
                 int index = i;
-                int row = i / cols;
-                int col = i % cols;
-
-                this.addDrawableChild(ButtonWidget.builder(Text.literal(OPTIONS.get(i)), b -> {
-                    if (isPrimary) primaryIndex = index;
-                    else backupIndex = index;
-                    this.client.setScreen(parent); // Zurück zum Hauptmenü
-                }).dimensions(startX + col * (buttonWidth + spacing), startY + row * (buttonHeight + spacing), buttonWidth, buttonHeight).build());
+                int r = i / cols, c = i % cols;
+                this.addDrawableChild(ButtonWidget.builder(Text.literal(OPTIONS.get(i)), b -> { if (isPrimary) primaryIndex = index; else backupIndex = index; client.setScreen(parent); }).dimensions(sx + c * (bw + sp), sy + r * (bh + sp), bw, bh).build());
             }
-
-            this.addDrawableChild(ButtonWidget.builder(Text.literal("Cancel"), b -> this.client.setScreen(parent))
-                    .dimensions(this.width / 2 - 50, this.height - 30, 100, 20).build());
+            this.addDrawableChild(ButtonWidget.builder(Text.literal("Cancel"), b -> client.setScreen(parent)).dimensions(this.width / 2 - 50, this.height - 30, 100, 20).build());
         }
-
         @Override
-        public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-            this.renderInGameBackground(context);
-            context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 15, 0xFFFFFF);
-            super.render(context, mouseX, mouseY, delta);
-        }
+        public void render(DrawContext context, int mouseX, int mouseY, float delta) { this.renderInGameBackground(context); context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 15, 0xFFFFFF); super.render(context, mouseX, mouseY, delta); }
         @Override public boolean shouldPause() { return false; }
     }
 }
