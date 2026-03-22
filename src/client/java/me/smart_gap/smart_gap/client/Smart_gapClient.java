@@ -34,7 +34,7 @@ public class Smart_gapClient implements ClientModInitializer {
     private int lastStackCount = -1;
     private int delayTimer = -1;
 
-    // --- CONFIG WERTE ---
+    // --- CONFIG VALUES ---
     public static ConfigData config = new ConfigData();
     private static final File CONFIG_FILE = FabricLoader.getInstance().getConfigDir().resolve("smart_gap.json").toFile();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -44,7 +44,7 @@ public class Smart_gapClient implements ClientModInitializer {
             "Slot 1", "Slot 2", "Slot 3", "Slot 4", "Slot 5", "Slot 6", "Slot 7", "Slot 8", "Slot 9"
     );
 
-    // Datenklasse für JSON
+    // Data class for JSON
     public static class ConfigData {
         public boolean switchBackEnabled = true;
         public int switchDelay = 0;
@@ -54,7 +54,7 @@ public class Smart_gapClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        loadConfig(); // Beim Start laden
+        loadConfig(); // Load on startup
 
         gapKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("Use Smart Gap", InputUtil.Type.KEYSYM, GLFW.GLFW_KEY_X, KeyBinding.Category.MISC));
 
@@ -73,7 +73,7 @@ public class Smart_gapClient implements ClientModInitializer {
         });
     }
 
-    // --- SPEICHER LOGIK ---
+    // --- SAVE LOGIC ---
     public static void saveConfig() {
         try (FileWriter writer = new FileWriter(CONFIG_FILE)) {
             GSON.toJson(config, writer);
@@ -92,7 +92,7 @@ public class Smart_gapClient implements ClientModInitializer {
         }
     }
 
-    // --- LOGIK ---
+    // --- LOGIC ---
     private void selectBestGap(MinecraftClient client) {
         int bestSlot = -1;
         for (int i = 0; i < 9; i++) {
@@ -191,7 +191,7 @@ public class Smart_gapClient implements ClientModInitializer {
                 int r = i / cols, c = i % cols;
                 this.addDrawableChild(ButtonWidget.builder(Text.literal(OPTIONS.get(i)), b -> {
                     if (isPrimary) config.primaryIndex = index; else config.backupIndex = index;
-                    saveConfig(); // Speichern bei Auswahl
+                    saveConfig(); // Save on selection
                     client.setScreen(parent);
                 }).dimensions(sx + c * (bw + sp), sy + r * (bh + sp), bw, bh).build());
             }
